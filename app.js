@@ -1,5 +1,5 @@
-// Abadir Market - Main App
-// Nothing fancy, just works.
+// Abadir Supermarket — Main App
+// Cart, search, filters and the Telebirr demo checkout.
 
 // --- State ---
 const getCart = () => JSON.parse(localStorage.getItem('abadir_cart')) || {};
@@ -9,227 +9,161 @@ const saveCart = (cart) => {
   updateBadge();
 };
 
+const catLabel = (id) => (CATEGORIES.find(c => c.id === id) || {}).label || id;
+const findProduct = (id) => products.find(p => p.id === id);
+
 // --- Badge ---
 const updateBadge = () => {
   const el = document.getElementById('badge-count');
   if (!el) return;
-  
+
   const total = Object.values(getCart()).reduce((a, b) => a + b, 0);
   el.textContent = total;
-  el.style.display = total > 0 ? 'inline-flex' : 'none';
+  el.classList.toggle('show', total > 0);
 };
 
-// --- Product Count ---
-const updateProductCount = (count) => {
-  const el = document.getElementById('product-count');
-  if (el) {
-    el.textContent = `${count} item${count !== 1 ? 's' : ''}`;
+// --- Category tiles + filter chips ---
+const renderCategories = () => {
+  const grid = document.getElementById('cat-grid');
+  const row = document.getElementById('filter-row');
+  const active = currentCategory;
+
+  if (grid) {
+    grid.innerHTML = CATEGORIES.map(c => `
+      <button class="cat-tile${c.id === active ? ' active' : ''}" onclick="filterProducts('${c.id}')" aria-pressed="${c.id === active}">
+        <span class="cat-emoji" style="background:${c.tint}" aria-hidden="true">${c.emoji}</span>
+        <span class="cat-name">${c.label}</span>
+      </button>
+    `).join('');
+  }
+
+  if (row) {
+    row.innerHTML = CATEGORIES.map(c => `
+      <button class="chip${c.id === active ? ' active' : ''}" onclick="filterProducts('${c.id}')" aria-pressed="${c.id === active}">
+        <span aria-hidden="true">${c.emoji}</span> ${c.label}
+      </button>
+    `).join('');
   }
 };
 
-// --- Render Shop ---
-const renderShop = (items) => {
+// --- Product card ---
+const priceHtml = (p) => p.was
+  ? `<span class="price"><span class="price-was">${p.was.toFixed(2)}</span> ${p.price.toFixed(2)} <small>ETB</small></span>`
+  : `<span class="price">${p.price.toFixed(2)} <small>ETB</small></span>`;
+
+const footHtml = (p) => {
+  const qty = getCart()[p.id] || 0;
+  if (qty === 0) {
+    return `
+      ${priceHtml(p)}
+      <button class="btn-add" onclick="addToCart('${p.id}')" aria-label="Add ${p.name} to basket">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+      </button>`;
+  }
+  return `
+    ${priceHtml(p)}
+    <span class="qty-mini">
+      <button onclick="changeQty('${p.id}', -1)" aria-label="Remove one">−</button>
+      <span>${qty}</span>
+      <button onclick="changeQty('${p.id}', 1)" aria-label="Add one">+</button>
+    </span>`;
+};
+
+const cardHtml = (p) => `
+  <article class="card" data-id="${p.id}">
+    <div class="card-media">
+      ${p.img
+        ? `<img src="${p.img}" alt="${p.name}" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${p.emoji}'}))">`
+        : `<span aria-hidden="true">${p.emoji}</span>`}
+      ${p.was ? `<span class="card-sale">−${Math.round((1 - p.price / p.was) * 100)}%</span>` : ''}
+    </div>
+    <div class="card-body">
+      <h3 class="card-name">${p.name}</h3>
+      <div class="card-foot" data-foot="${p.id}">${footHtml(p)}</div>
+    </div>
+  </article>`;
+
+// --- Search & filter ---
+let currentCategory = 'all';
+let currentSearch = '';
+
+const PAGE_SIZE = 24;
+let visibleCount = PAGE_SIZE;
+
+const renderShop = () => {
   const container = document.getElementById('product-grid');
   if (!container) return;
-  
+
+  const term = currentSearch.toLowerCase();
+  const items = products.filter(p =>
+    (currentCategory === 'all' || p.category === currentCategory) &&
+    (!term || p.name.toLowerCase().includes(term) || p.category.toLowerCase().includes(term) || catLabel(p.category).toLowerCase().includes(term))
+  );
+
   if (items.length === 0) {
     container.innerHTML = `
-      <div style="grid-column: 1 / -1; text-align: center; padding: 80px 24px;">
-        <p style="color: var(--text-muted); font-size: 1.1rem;">No matches found.</p>
-        <p style="color: var(--text-light); font-size: 0.9rem; margin-top: 8px;">Try a different search term.</p>
-      </div>
-    `;
-    updateProductCount(0);
-    return;
-  }
-  
-  container.innerHTML = items.map((p, i) => `
-    <article class="product-card" style="animation: fade-in 0.4s ease ${i * 0.05}s both;">
-      <div class="product-image-wrapper">
-        <img src="${p.img}" alt="${p.name}" class="product-image" loading="lazy">
-        <span class="product-category-badge">${p.category}</span>
-      </div>
-      <div class="product-info">
-        <h3 class="product-name">${p.name}</h3>
-        <div class="product-meta">
-          <span class="product-price">${p.price.toFixed(2)} <span>ETB</span></span>
-          <button class="btn-add" onclick="addToCart('${p.id}', this)" aria-label="Add to basket">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
+      <div class="empty-state">
+        <div class="es-icon" aria-hidden="true">🧺</div>
+        <h3>No matches found</h3>
+        <p>Try a different search term or category.</p>
+      </div>`;
+  } else {
+    const shown = items.slice(0, visibleCount);
+    container.innerHTML = shown.map(cardHtml).join('');
+
+    if (items.length > shown.length) {
+      container.insertAdjacentHTML('beforeend', `
+        <div class="show-more-wrap">
+          <button class="show-more" onclick="showMore()">
+            Show more <span>${items.length - shown.length} left</span>
           </button>
-        </div>
-      </div>
-    </article>
-  `).join('');
-  
-  updateProductCount(items.length);
+        </div>`);
+    }
+  }
+
+  const count = document.getElementById('product-count');
+  if (count) count.textContent = `${items.length} item${items.length !== 1 ? 's' : ''}`;
 };
 
-// --- Search & Filter ---
-const handleSearch = (input) => {
-  const term = input.value.toLowerCase().trim();
-  const filtered = products.filter(p => 
-    p.name.toLowerCase().includes(term) || 
-    p.category.toLowerCase().includes(term)
-  );
-  renderShop(filtered);
+const showMore = () => {
+  visibleCount += PAGE_SIZE;
+  renderShop();
 };
 
 const filterProducts = (category) => {
-  // Update pills
-  document.querySelectorAll('.pill').forEach(pill => {
-    pill.classList.remove('active');
-    const pillCategory = pill.textContent.toLowerCase().trim();
-    if ((category === '' && pillCategory.includes('everything')) ||
-        (category !== '' && pillCategory.includes(category))) {
-      pill.classList.add('active');
-    }
-  });
-  
-  const filtered = category === '' 
-    ? products 
-    : products.filter(p => p.category.toLowerCase() === category);
-  
-  renderShop(filtered);
-  
-  // Scroll to products
+  currentCategory = category;
+  visibleCount = PAGE_SIZE;
+  renderCategories();
+  renderShop();
   document.getElementById('products')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 };
 
-// --- Add to Cart ---
+// --- Cart operations ---
+const refreshFoot = (id) => {
+  const p = findProduct(id);
+  const foot = document.querySelector(`[data-foot="${id}"]`);
+  if (p && foot) foot.innerHTML = footHtml(p);
+};
+
 const addToCart = (id, btn) => {
   const cart = getCart();
   cart[id] = (cart[id] || 0) + 1;
   saveCart(cart);
-  
-  // Button feedback
-  btn.innerHTML = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="20 6 9 17 4 12"></polyline>
-    </svg>
-  `;
-  btn.style.background = '#16a34a';
-  
-  setTimeout(() => {
-    btn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"></line>
-        <line x1="5" y1="12" x2="19" y2="12"></line>
-      </svg>
-    `;
-    btn.style.background = '';
-  }, 1000);
-};
-
-// --- Cart Page ---
-let extrasTotal = 0;
-
-const renderCart = () => {
-  const cart = getCart();
-  const container = document.getElementById('cart-container');
-  if (!container) return;
-  
-  const ids = Object.keys(cart);
-  const summary = document.querySelector('.cart-summary');
-  
-  if (ids.length === 0) {
-    container.innerHTML = `
-      <div class="cart-empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <circle cx="9" cy="21" r="1"></circle>
-          <circle cx="20" cy="21" r="1"></circle>
-          <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
-        </svg>
-        <h3>Your basket is empty</h3>
-        <p>Time to fix that.</p>
-        <a href="index.html" class="btn-checkout" style="max-width: 280px; margin: 24px auto 0;">Browse products</a>
-      </div>
-    `;
-    if (summary) {
-      summary.style.opacity = '0.5';
-      summary.style.pointerEvents = 'none';
-    }
-    updateTotals(0);
-    return;
-  }
-  
-  if (summary) {
-    summary.style.opacity = '1';
-    summary.style.pointerEvents = 'auto';
-  }
-  
-  let subtotal = 0;
-  
-  container.innerHTML = ids.map(id => {
-    const p = products.find(x => x.id === id);
-    if (!p) return '';
-    
-    const qty = cart[id];
-    const itemTotal = p.price * qty;
-    subtotal += itemTotal;
-    
-    return `
-      <div class="cart-item">
-        <img src="${p.img}" alt="${p.name}" class="cart-item-image">
-        <div class="cart-item-details">
-          <div class="cart-item-name">${p.name}</div>
-          <div class="cart-item-price">${p.price.toFixed(2)} ETB each</div>
-        </div>
-        <div class="cart-item-actions">
-          <div class="quantity-control">
-            <button class="qty-btn" onclick="changeQty('${id}', -1)">−</button>
-            <span class="qty-value">${qty}</span>
-            <button class="qty-btn" onclick="changeQty('${id}', 1)">+</button>
-          </div>
-          <div class="cart-item-total">${itemTotal.toFixed(2)} ETB</div>
-          <button class="remove-btn" onclick="removeItem('${id}')">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18"></path>
-              <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-              <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-            </svg>
-          </button>
-        </div>
-      </div>
-    `;
-  }).join('');
-  
-  updateTotals(subtotal);
-};
-
-const updateTotals = (subtotal) => {
-  const subtotalEl = document.getElementById('subtotal-amount');
-  const totalEl = document.getElementById('final-total');
-  const taxEl = document.getElementById('tax-display');
-  const extrasRow = document.querySelector('.extras-row');
-  const extrasEl = document.getElementById('extras-amount');
-  
-  if (subtotalEl) subtotalEl.textContent = `${subtotal.toFixed(2)} ETB`;
-  
-  const total = subtotal + extrasTotal;
-  if (totalEl) totalEl.textContent = `${total.toFixed(2)} ETB`;
-  
-  if (extrasRow) {
-    extrasRow.style.display = extrasTotal > 0 ? 'flex' : 'none';
-  }
-  if (extrasEl) extrasEl.textContent = `${extrasTotal.toFixed(2)} ETB`;
-  
-  if (taxEl && subtotal > 0) {
-    const tax = subtotal - (subtotal / 1.12);
-    taxEl.textContent = `Includes 12% VAT: ${tax.toFixed(2)} ETB`;
-  } else if (taxEl) {
-    taxEl.textContent = '';
-  }
+  refreshFoot(id);
+  showToast('Added to basket');
 };
 
 const changeQty = (id, delta) => {
   const cart = getCart();
-  cart[id] += delta;
+  cart[id] = (cart[id] || 0) + delta;
   if (cart[id] <= 0) delete cart[id];
   saveCart(cart);
-  renderCart();
+
+  if (document.getElementById('product-grid')) refreshFoot(id);
+  if (document.getElementById('cart-container')) renderCart();
 };
 
 const removeItem = (id) => {
@@ -239,51 +173,142 @@ const removeItem = (id) => {
   renderCart();
 };
 
-// --- Extras ---
+// --- Cart page ---
+let extrasTotal = 0;
+
+const cartSubtotal = () =>
+  Object.entries(getCart()).reduce((sum, [id, qty]) => {
+    const p = findProduct(id);
+    return sum + (p ? p.price * qty : 0);
+  }, 0);
+
+const renderCart = () => {
+  const cart = getCart();
+  const container = document.getElementById('cart-container');
+  if (!container) return;
+
+  const ids = Object.keys(cart);
+  const checkoutBtn = document.getElementById('checkout-btn');
+  const extras = document.getElementById('cart-extras');
+
+  if (ids.length === 0) {
+    container.innerHTML = `
+      <div class="cart-empty">
+        <div class="ce-icon" aria-hidden="true">🛒</div>
+        <h3>Your basket is empty</h3>
+        <p>Time to fix that.</p>
+        <a href="index.html" class="btn btn-primary">Browse products</a>
+      </div>`;
+    if (extras) extras.hidden = true;
+    if (checkoutBtn) checkoutBtn.disabled = true;
+    updateTotals(0);
+    const c = document.getElementById('items-count');
+    if (c) c.textContent = '';
+    return;
+  }
+
+  if (extras) extras.hidden = false;
+  if (checkoutBtn) checkoutBtn.disabled = false;
+
+  let subtotal = 0;
+
+  container.innerHTML = ids.map(id => {
+    const p = findProduct(id);
+    if (!p) return '';
+
+    const qty = cart[id];
+    const itemTotal = p.price * qty;
+    subtotal += itemTotal;
+
+    return `
+      <div class="cart-row">
+        <div class="cart-thumb" aria-hidden="true">${p.img ? `<img src="${p.img}" alt="">` : p.emoji}</div>
+        <div class="cart-info">
+          <div class="cart-name">${p.name}</div>
+          <div class="cart-unit">${p.price.toFixed(2)} ETB each</div>
+        </div>
+        <div class="cart-controls">
+          <div class="qty">
+            <button onclick="changeQty('${id}', -1)" aria-label="Decrease quantity">−</button>
+            <span class="qty-n">${qty}</span>
+            <button onclick="changeQty('${id}', 1)" aria-label="Increase quantity">+</button>
+          </div>
+          <div class="cart-line-total">${itemTotal.toFixed(2)} ETB</div>
+          <button class="cart-remove" onclick="removeItem('${id}')">Remove</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  const count = document.getElementById('items-count');
+  const totalUnits = Object.values(cart).reduce((a, b) => a + b, 0);
+  if (count) count.textContent = `${totalUnits} item${totalUnits !== 1 ? 's' : ''}`;
+
+  updateTotals(subtotal);
+};
+
+const updateTotals = (subtotal) => {
+  const subtotalEl = document.getElementById('subtotal-amount');
+  const totalEl = document.getElementById('final-total');
+  const extrasRow = document.getElementById('extras-row');
+  const extrasEl = document.getElementById('extras-amount');
+  const vatEl = document.getElementById('vat-note');
+
+  const total = subtotal + extrasTotal;
+
+  if (subtotalEl) subtotalEl.textContent = `${subtotal.toFixed(2)} ETB`;
+  if (extrasRow) extrasRow.hidden = extrasTotal === 0;
+  if (extrasEl) extrasEl.textContent = `${extrasTotal.toFixed(2)} ETB`;
+  if (totalEl) totalEl.textContent = `${total.toFixed(2)} ETB`;
+
+  if (vatEl) {
+    vatEl.textContent = subtotal > 0
+      ? `Includes 12% VAT: ${(subtotal - subtotal / 1.12).toFixed(2)} ETB`
+      : '';
+  }
+};
+
 const setupExtras = () => {
   const ecoBag = document.getElementById('eco-bag');
-  const priority = document.getElementById('priority');
-  
+
   const updateExtras = () => {
     extrasTotal = 0;
     if (ecoBag?.checked) extrasTotal += 15;
-    if (priority?.checked) extrasTotal += 50;
-    
-    const subtotal = Object.entries(getCart()).reduce((sum, [id, qty]) => {
-      const p = products.find(x => x.id === id);
-      return sum + (p ? p.price * qty : 0);
-    }, 0);
-    
-    updateTotals(subtotal);
+    updateTotals(cartSubtotal());
   };
-  
+
   ecoBag?.addEventListener('change', updateExtras);
-  priority?.addEventListener('change', updateExtras);
 };
 
-// --- Payment Modal ---
+// --- Payment modal ---
 let serverOtp = 0;
 let currentStep = 1;
+
+const setView = (name) => {
+  ['phone', 'otp', 'success'].forEach(v => {
+    const el = document.getElementById(`view-${v}`);
+    if (el) el.hidden = v !== name;
+  });
+};
 
 const openModal = () => {
   if (Object.keys(getCart()).length === 0) {
     showToast('Your basket is empty');
     return;
   }
-  
+
   const modal = document.getElementById('modal');
   modal.classList.add('active');
   document.body.style.overflow = 'hidden';
-  
-  // Reset
+
   currentStep = 1;
   updateSteps();
-  document.getElementById('view-phone').style.display = 'block';
-  document.getElementById('view-otp').style.display = 'none';
-  document.getElementById('view-success').style.display = 'none';
+  setView('phone');
   document.getElementById('input-phone').value = '';
-  document.querySelectorAll('.otp-digit').forEach(input => input.value = '');
-  
+  document.querySelectorAll('.otp-digit').forEach(input => {
+    input.value = '';
+    input.classList.remove('err');
+  });
+
   setTimeout(() => document.getElementById('input-phone')?.focus(), 100);
 };
 
@@ -298,47 +323,35 @@ const closeModalOnOverlay = (e) => {
 
 const updateSteps = () => {
   document.querySelectorAll('.step').forEach((step, idx) => {
-    step.classList.remove('active', 'completed');
-    if (idx + 1 < currentStep) step.classList.add('completed');
-    if (idx + 1 === currentStep) step.classList.add('active');
+    const n = idx + 1;
+    step.classList.toggle('active', n === currentStep);
+    step.classList.toggle('done', n < currentStep);
   });
 };
 
-const formatPhoneInput = (el) => {
-  // Remove non-digits
-  el.value = el.value.replace(/\D/g, '');
-  // Limit to 9 digits
-  if (el.value.length > 9) el.value = el.value.slice(0, 9);
-};
-
 const sendOtp = () => {
-  const phone = document.getElementById('input-phone').value;
+  const phone = document.getElementById('input-phone').value.replace(/\D/g, '');
   if (phone.length < 9) {
     showToast('Enter a valid phone number');
     return;
   }
-  
+
   const btn = document.getElementById('btn-get');
-  btn.textContent = 'Sending...';
+  btn.textContent = 'Sending…';
   btn.disabled = true;
-  
+
   setTimeout(() => {
     btn.textContent = 'Send code';
     btn.disabled = false;
-    
+
     serverOtp = Math.floor(10000 + Math.random() * 90000);
-    
-    // Show fake SMS
     showTelebirrSms(serverOtp);
-    
-    // Move to next step
+
     currentStep = 2;
     updateSteps();
-    document.getElementById('view-phone').style.display = 'none';
-    document.getElementById('view-otp').style.display = 'block';
+    setView('otp');
     document.getElementById('phone-display').textContent = '+251 ' + phone;
-    
-    // Focus first OTP input
+
     setTimeout(() => document.querySelector('.otp-digit')?.focus(), 100);
   }, 800);
 };
@@ -346,84 +359,56 @@ const sendOtp = () => {
 // --- Fake Telebirr SMS ---
 const showTelebirrSms = (code) => {
   const container = document.getElementById('sms-container');
-  
+  if (!container) return;
+
   const sms = document.createElement('div');
-  sms.className = 'sms-notification';
+  sms.className = 'sms-toast';
   sms.innerHTML = `
-    <div class="sms-header">
-      <div class="sms-app-icon">📱</div>
-      <div class="sms-sender-info">
-        <div class="sms-sender">Telebirr</div>
+    <div class="sms-head">
+      <div class="sms-app" aria-hidden="true">💬</div>
+      <div>
+        <div class="sms-app-name">Telebirr</div>
         <div class="sms-time">now</div>
       </div>
     </div>
     <div class="sms-body">
-      Your Telebirr verification code is <strong>${code}</strong>. Valid for 5 minutes. Do not share this code with anyone.
-    </div>
-  `;
-  
+      Your Telebirr verification code is <span class="sms-code">${code}</span>.
+      Valid for 5 minutes. Do not share this code with anyone.
+    </div>`;
+
   container.appendChild(sms);
-  
-  // Play subtle notification sound (optional, using Audio API)
-  // const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmFgU7k9n1unEiBC13yO/eizEIHWq+8+OWT');
-  // audio.volume = 0.3;
-  // audio.play().catch(() => {});
-  
-  // Remove after 8 seconds
+
   setTimeout(() => {
-    sms.style.animation = 'sms-slide-out 0.3s ease forwards';
+    sms.classList.add('out');
     setTimeout(() => sms.remove(), 300);
   }, 8000);
 };
 
-// Add slide-out animation
-const smsStyle = document.createElement('style');
-smsStyle.textContent = `
-  @keyframes sms-slide-out {
-    to {
-      opacity: 0;
-      transform: translateX(100px);
-    }
-  }
-`;
-document.head.appendChild(smsStyle);
-
-// --- OTP Input Handling ---
+// --- OTP input handling ---
 const setupOtpInputs = () => {
   const inputs = document.querySelectorAll('.otp-digit');
-  
+
   inputs.forEach((input, idx) => {
     input.addEventListener('input', (e) => {
-      // Only allow numbers
       e.target.value = e.target.value.replace(/\D/g, '').slice(0, 1);
-      
-      // Move to next input
-      if (e.target.value && idx < inputs.length - 1) {
-        inputs[idx + 1].focus();
-      }
-      
-      // Auto-submit on last digit
+      e.target.classList.remove('err');
+
+      if (e.target.value && idx < inputs.length - 1) inputs[idx + 1].focus();
+
       if (idx === inputs.length - 1 && e.target.value) {
         const code = Array.from(inputs).map(i => i.value).join('');
-        if (code.length === 5) {
-          setTimeout(() => verifyOtp(code), 200);
-        }
+        if (code.length === 5) setTimeout(() => verifyOtp(code), 200);
       }
     });
-    
+
     input.addEventListener('keydown', (e) => {
-      // Backspace to previous
-      if (e.key === 'Backspace' && !e.target.value && idx > 0) {
-        inputs[idx - 1].focus();
-      }
+      if (e.key === 'Backspace' && !e.target.value && idx > 0) inputs[idx - 1].focus();
     });
-    
+
     input.addEventListener('paste', (e) => {
       e.preventDefault();
       const paste = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 5);
-      paste.split('').forEach((char, i) => {
-        if (inputs[i]) inputs[i].value = char;
-      });
+      paste.split('').forEach((char, i) => { if (inputs[i]) inputs[i].value = char; });
       if (inputs[paste.length - 1]) inputs[paste.length - 1].focus();
     });
   });
@@ -431,96 +416,86 @@ const setupOtpInputs = () => {
 
 const verifyOtp = (code) => {
   const userCode = code || Array.from(document.querySelectorAll('.otp-digit')).map(i => i.value).join('');
-  
+
   if (parseInt(userCode) !== serverOtp) {
     showToast('Wrong code. Try again.');
     document.querySelectorAll('.otp-digit').forEach(i => {
-      i.style.borderColor = '#dc2626';
-      setTimeout(() => i.style.borderColor = '', 500);
+      i.classList.add('err');
+      setTimeout(() => i.classList.remove('err'), 600);
     });
     return;
   }
-  
-  // Success
+
   currentStep = 3;
   updateSteps();
-  document.getElementById('view-otp').style.display = 'none';
-  document.getElementById('view-success').style.display = 'block';
-  
-  const total = document.getElementById('final-total').textContent;
-  document.getElementById('paid-amount').textContent = total;
-  
-  // Generate random ref
+  setView('success');
+
+  document.getElementById('paid-amount').textContent = document.getElementById('final-total').textContent;
   document.getElementById('ref-number').textContent = '#ABD-' + Math.floor(10000 + Math.random() * 90000);
-  
-  // Clear cart
+
   localStorage.removeItem('abadir_cart');
   updateBadge();
 };
 
 const resendCode = () => {
-  document.querySelector('.btn-text').textContent = 'Sending...';
+  const btn = document.querySelector('.text-btn');
+  if (btn) {
+    btn.textContent = 'Sending…';
+    btn.disabled = true;
+  }
   setTimeout(() => {
     serverOtp = Math.floor(10000 + Math.random() * 90000);
     showTelebirrSms(serverOtp);
-    document.querySelector('.btn-text').textContent = "Didn't get it? Resend";
+    if (btn) {
+      btn.textContent = "Didn't get it? Resend";
+      btn.disabled = false;
+    }
     showToast('New code sent');
   }, 1000);
 };
 
-// --- Toast Notification ---
+// --- Toast ---
 const showToast = (message) => {
-  const existing = document.querySelector('.toast');
-  if (existing) existing.remove();
-  
+  document.querySelector('.toast')?.remove();
+
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.textContent = message;
-  toast.style.cssText = `
-    position: fixed;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%) translateY(-100px);
-    background: #1a1a1a;
-    color: white;
-    padding: 12px 24px;
-    border-radius: 999px;
-    font-size: 14px;
-    font-weight: 500;
-    z-index: 1000;
-    opacity: 0;
-    transition: all 0.3s ease;
-  `;
-  
+  toast.setAttribute('role', 'status');
+
   document.body.appendChild(toast);
-  
-  requestAnimationFrame(() => {
-    toast.style.opacity = '1';
-    toast.style.transform = 'translateX(-50%) translateY(0)';
-  });
-  
+  requestAnimationFrame(() => toast.classList.add('show'));
+
   setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateX(-50%) translateY(-100px)';
+    toast.classList.remove('show');
     setTimeout(() => toast.remove(), 300);
-  }, 2500);
+  }, 2200);
 };
 
 // --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
   updateBadge();
-  
-  if (document.getElementById('product-grid')) {
-    renderShop(products);
+
+  const stat = document.getElementById('stat-products');
+  if (stat) stat.textContent = products.length;
+
+  const search = document.getElementById('search-input');
+  if (search) {
+    renderCategories();
+    renderShop();
+    search.addEventListener('input', () => {
+      currentSearch = search.value;
+      visibleCount = PAGE_SIZE;
+      renderShop();
+    });
   }
-  
+
   if (document.getElementById('cart-container')) {
     renderCart();
     setupExtras();
     setupOtpInputs();
   }
-  
-  // Close modal on escape
+
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeModal();
   });
