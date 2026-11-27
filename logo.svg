@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Abadir Supermarket">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff7d33"/>
+      <stop offset="1" stop-color="#e8590c"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#a)"/>
+  <!-- shopping basket outline -->
+  <path d="M18 27h28l-3.2 18.5a4 4 0 0 1-4 3.5H25.2a4 4 0 0 1-4-3.5L18 27z"
+        fill="#fffdf7" stroke="#17181c" stroke-width="2.4" stroke-linejoin="round"/>
+  <!-- basket handle -->
+  <path d="M25.5 27l4.2-7.2a3.4 3.4 0 0 1 4.6 0L38.5 27"
+        fill="none" stroke="#17181c" stroke-width="2.4" stroke-linecap="round"/>
+  <!-- woven lines -->
+  <path d="M24.5 33.5l1.6 9M32 33.5v9M39.5 33.5l-1.6 9"
+        stroke="#ff8c42" stroke-width="2.2" stroke-linecap="round" opacity=".65"/>
+  <!-- the "A" mark on the basket -->
+  <path d="M28.6 43.4L32 35.6l3.4 7.8" fill="none" stroke="#17181c"
+        stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
